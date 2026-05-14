@@ -1,13 +1,40 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>讀懂敘述順序 - 納斯卡線之旅</title>
+    <title>納斯卡線學習活動</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* 自定義連線畫布樣式 */
-        #canvas-container {
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            /* 防止行動裝置上滑動時產生預設行為 */
+            overscroll-behavior-y: none;
+        }
+
+        /* 隱藏捲軸但可捲動 */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* 防止選取文字導致拖曳異常與搜尋彈窗 */
+        .no-select {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            /* 停用行動裝置的長按選單 */
+            -webkit-touch-callout: none;
+        }
+
+        /* 連連看畫布 */
+        #match-canvas {
             position: absolute;
             top: 0;
             left: 0;
@@ -16,344 +43,392 @@
             pointer-events: none; /* 讓點擊事件穿透畫布 */
             z-index: 10;
         }
-        .dot {
+
+        /* 連連看節點 */
+        .match-node {
+            width: 24px;
+            height: 24px;
+            background-color: #e2e8f0;
+            border: 3px solid #fff;
+            border-radius: 50%;
             cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             transition: all 0.2s;
+            position: relative;
+            z-index: 20;
         }
-        .dot:hover {
-            transform: scale(1.5);
-            background-color: #3b82f6; /* Tailwind blue-500 */
+        .match-node:hover {
+            background-color: #cbd5e1;
+            transform: scale(1.1);
         }
-        .dot.selected {
-            background-color: #ef4444; /* Tailwind red-500 */
-            transform: scale(1.5);
+        .match-node.selected {
+            background-color: #3b82f6;
+            border-color: #bfdbfe;
+            transform: scale(1.2);
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
         }
-        .dot.connected {
-            background-color: #10b981; /* Tailwind emerald-500 */
-        }
-        
-        /* 排序區塊樣式 */
+
+        /* 排序列表拖曳特效 */
         .sortable-item {
-            cursor: grab;
+            touch-action: pan-y; /* 允許垂直滾動，但接管拖曳 */
+            transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s;
         }
-        .sortable-item:active {
-            cursor: grabbing;
+        .sortable-item.dragging {
+            opacity: 0.4;
+            transform: scale(0.98);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         }
-        .drag-over {
+        .sortable-item.drag-over {
             border: 2px dashed #3b82f6;
             background-color: #eff6ff;
+            transform: translateY(2px);
         }
     </style>
 </head>
-<body class="bg-slate-50 font-sans text-slate-800 min-h-screen p-4 md:p-8">
+<body class="text-slate-800 pb-20">
 
-    <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
-        
-        <!-- Header -->
-        <header class="bg-teal-600 text-white p-6 text-center">
-            <h1 class="text-3xl font-bold mb-2">二、讀懂敘述順序</h1>
-            <p class="text-teal-100 text-lg">納斯卡線之旅學習單</p>
-        </header>
-
-        <div class="p-6 md:p-8 space-y-12">
-
-            <!-- 活動一：連連看 -->
-            <section id="activity-1" class="relative">
-                <div class="flex justify-between items-center mb-6 border-b pb-2">
-                    <h2 class="text-2xl font-bold text-teal-700 flex items-center">
-                        <span class="bg-teal-100 text-teal-800 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-lg">1</span>
-                        活動一：圖文連連看
-                    </h2>
-                    <button id="reset-lines-btn" class="text-sm bg-slate-200 hover:bg-slate-300 text-slate-700 py-1 px-3 rounded-md transition-colors">重置連線</button>
-                </div>
-                <p class="text-slate-600 mb-6 font-medium">請點擊左側文字旁的圓點，再點擊右側對應圖片旁的圓點，將「敘述」與「圖片」連起來。</p>
-
-                <div class="relative w-full">
-                    <!-- 畫布用於繪製連線 -->
-                    <svg id="canvas-container"></svg>
-
-                    <div class="flex justify-between relative z-20" id="matching-container">
-                        
-                        <!-- 左側：文字敘述 (打亂順序) -->
-                        <div class="w-5/12 space-y-4" id="text-list">
-                            <!-- 透過 JS 動態產生 -->
-                        </div>
-
-                        <!-- 右側：圖片區塊 (打亂順序) -->
-                        <div class="w-5/12 space-y-4" id="img-list">
-                           <!-- 透過 JS 動態產生 -->
-                        </div>
-
-                    </div>
-                </div>
-                
-                <div id="matching-feedback" class="mt-6 text-center text-lg font-bold min-h-[28px]"></div>
-            </section>
-
-            <hr class="border-slate-200">
-
-            <!-- 活動二：順序排排看 -->
-            <section id="activity-2">
-                <div class="flex justify-between items-center mb-6 border-b pb-2">
-                    <h2 class="text-2xl font-bold text-teal-700 flex items-center">
-                        <span class="bg-teal-100 text-teal-800 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-lg">2</span>
-                        活動二：順序排排看
-                    </h2>
-                </div>
-                <p class="text-slate-600 mb-6 font-medium">請根據課文邏輯，將下方的事件拖曳排序，排列出這趟旅程的正確順序 (由上到下：1 到 6)。</p>
-
-                <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
-                    <!-- 數字標示區 -->
-                    <div class="hidden md:flex flex-col col-span-1 space-y-3 pt-1">
-                        <div class="h-16 flex items-center justify-center font-bold text-slate-400 text-xl">1</div>
-                        <div class="h-16 flex items-center justify-center font-bold text-slate-400 text-xl">2</div>
-                        <div class="h-16 flex items-center justify-center font-bold text-slate-400 text-xl">3</div>
-                        <div class="h-16 flex items-center justify-center font-bold text-slate-400 text-xl">4</div>
-                        <div class="h-16 flex items-center justify-center font-bold text-slate-400 text-xl">5</div>
-                        <div class="h-16 flex items-center justify-center font-bold text-slate-400 text-xl">6</div>
-                    </div>
-
-                    <!-- 拖曳排序區 -->
-                    <div id="sortable-list" class="col-span-1 md:col-span-11 space-y-3">
-                        <!-- 透過 JS 動態產生 -->
-                    </div>
-                </div>
-
-                <div class="mt-8 flex justify-center space-x-4">
-                    <button id="check-order-btn" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-6 rounded-lg shadow transition-colors">檢查順序</button>
-                    <button id="reset-order-btn" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-6 rounded-lg transition-colors">打亂重來</button>
-                </div>
-                
-                <div id="order-feedback" class="mt-4 text-center text-lg font-bold min-h-[28px]"></div>
-            </section>
-
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                納斯卡線探索
+            </h1>
+            <div class="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+                學習活動
+            </div>
         </div>
-        
-        <!-- Footer -->
-        <footer class="bg-slate-100 text-slate-500 text-center p-4 text-sm">
-            本活動參考自 "image_cda13e.jpg" 教材內容設計。
-        </footer>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 mt-8 space-y-12">
+
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="bg-blue-50 px-6 py-4 border-b border-blue-100 flex justify-between items-center">
+                <div>
+                    <h2 class="text-lg font-bold text-blue-900">活動一：圖文連連看</h2>
+                    <p class="text-sm text-blue-700 mt-1">請點擊左右兩側的圓點，將文字描述與對應的畫面特徵連起來。</p>
+                </div>
+                <button onclick="resetMatching()" class="text-sm bg-white text-blue-600 px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50 transition shadow-sm font-medium">
+                    重新連線
+                </button>
+            </div>
+            
+            <div class="p-6 relative no-select" id="match-container">
+                <canvas id="match-canvas"></canvas>
+                
+                <div class="grid grid-cols-2 gap-8 md:gap-24 relative z-10">
+                    <!-- 左側：文字描述 -->
+                    <div class="space-y-4" id="match-left">
+                        <!-- 動態生成 -->
+                    </div>
+
+                    <!-- 右側：圖片特徵 -->
+                    <div class="space-y-4" id="match-right">
+                        <!-- 動態生成 -->
+                    </div>
+                </div>
+
+                <div class="mt-8 text-center relative z-20">
+                    <button onclick="checkMatching()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-xl shadow-md transition-transform transform hover:-translate-y-0.5 w-full md:w-auto">
+                        檢查連線答案
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="bg-emerald-50 px-6 py-4 border-b border-emerald-100">
+                <h2 class="text-lg font-bold text-emerald-900">活動二：順序排排看</h2>
+                <p class="text-sm text-emerald-700 mt-1">請拖曳（或使用箭頭按鈕）將納斯卡之旅的步驟按照順序排列。第一步請放在最上方。</p>
+            </div>
+            
+            <div class="p-6">
+                <!-- 拖曳清單容器 -->
+                <div id="sortable-list" class="space-y-3 no-select">
+                    <!-- 動態生成 -->
+                </div>
+
+                <div class="mt-8 text-center">
+                    <button onclick="checkOrder()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-8 rounded-xl shadow-md transition-transform transform hover:-translate-y-0.5 w-full md:w-auto">
+                        檢查排列順序
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <div id="message-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 transition-transform duration-300" id="modal-content">
+            <div class="text-center">
+                <div id="modal-icon" class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
+                    <!-- Icon injected via JS -->
+                </div>
+                <h3 class="text-xl font-bold text-slate-900 mb-2" id="modal-title">標題</h3>
+                <p class="text-slate-600 mb-6" id="modal-message">訊息內容</p>
+                <button onclick="closeModal()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-xl transition-colors">
+                    我知道了
+                </button>
+            </div>
+        </div>
     </div>
 
     <script>
-        // 資料定義
-        const activityData = [
-            { id: 1, text: "從飛機窗往外看人形畫", imgText: "機窗視角與人形圖", icon: "👁️" },
-            { id: 2, text: "到納斯卡的路途", imgText: "地球與路徑圖", icon: "🗺️" },
-            { id: 3, text: "參觀考古博物館", imgText: "博物館櫃檯人員", icon: "🏛️" },
-            { id: 4, text: "到小機場搭飛機", imgText: "小橘飛機停在地上", icon: "✈️" },
-            { id: 5, text: "從飛機上往下看納斯卡線", imgText: "俯瞰巨大的鳥類地畫", icon: "🦅" },
-            { id: 6, text: "旅行感想", imgText: "寫著感想的筆記本", icon: "📝" }
-        ];
+        // --- 共用與 Modal 邏輯 ---
+        function showModal(title, message, isSuccess = true) {
+            const modal = document.getElementById('message-modal');
+            const modalContent = document.getElementById('modal-content');
+            const iconContainer = document.getElementById('modal-icon');
+            const titleEl = document.getElementById('modal-title');
+            const messageEl = document.getElementById('modal-message');
 
-        // 隨機打亂陣列函數
-        function shuffle(array) {
-            let currentIndex = array.length, randomIndex;
-            while (currentIndex > 0) {
-                randomIndex = Math.floor(Math.random() * currentIndex);
-                currentIndex--;
-                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+            titleEl.textContent = title;
+            messageEl.textContent = message;
+
+            if (isSuccess) {
+                iconContainer.className = 'mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4 text-green-600';
+                iconContainer.innerHTML = `<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>`;
+            } else {
+                iconContainer.className = 'mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-amber-100 mb-4 text-amber-600';
+                iconContainer.innerHTML = `<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`;
             }
-            return array;
+
+            modal.classList.remove('hidden');
+            // Trigger reflow
+            void modal.offsetWidth;
+            modal.classList.remove('opacity-0');
+            modalContent.classList.remove('scale-95');
         }
 
-        // ==========================================
-        // 活動一：連連看邏輯
-        // ==========================================
-        const textListEl = document.getElementById('text-list');
-        const imgListEl = document.getElementById('img-list');
-        const svgContainer = document.getElementById('canvas-container');
-        const resetLinesBtn = document.getElementById('reset-lines-btn');
-        const matchingFeedback = document.getElementById('matching-feedback');
+        function closeModal() {
+            const modal = document.getElementById('message-modal');
+            const modalContent = document.getElementById('modal-content');
+            
+            modal.classList.add('opacity-0');
+            modalContent.classList.add('scale-95');
+            
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
+        }
 
-        let selectedDot = null;
-        let connections = []; // 儲存已建立的連線 {lineId, leftId, rightId}
+        // --- 活動一：連連看邏輯 ---
+        const matchData = [
+            { id: 1, text: "從飛機窗往外看人形畫", matchId: 'D' },
+            { id: 2, text: "到納斯卡的路途", matchId: 'E' },
+            { id: 3, text: "參觀考古博物館", matchId: 'C' },
+            { id: 4, text: "到小機場搭飛機", matchId: 'F' },
+            { id: 5, text: "從飛機上往下看納斯卡線", matchId: 'B' },
+            { id: 6, text: "旅行感想", matchId: 'A' }
+        ];
 
-        function initMatchingGame() {
-            textListEl.innerHTML = '';
-            imgListEl.innerHTML = '';
-            svgContainer.innerHTML = '';
+        const matchImages = [
+            { id: 'A', img: "p6.PNG" },
+            { id: 'B', img: "p5.PNG" },
+            { id: 'C', img: "p3.PNG" },
+            { id: 'D', img: "p1.PNG" },
+            { id: 'E', img: "p2.PNG" },
+            { id: 'F', img: "p4.PNG" }
+        ];
+
+        let connections = []; // { from: el, to: el }
+        let currentSelection = null;
+        
+        const canvas = document.getElementById('match-canvas');
+        const ctx = canvas.getContext('2d');
+
+        function initMatching() {
+            const leftContainer = document.getElementById('match-left');
+            const rightContainer = document.getElementById('match-right');
+            
+            leftContainer.innerHTML = '';
+            rightContainer.innerHTML = '';
             connections = [];
-            selectedDot = null;
-            matchingFeedback.textContent = '';
-            matchingFeedback.className = 'mt-6 text-center text-lg font-bold min-h-[28px]';
+            currentSelection = null;
 
-            // 準備打亂的資料
-            const leftItems = shuffle([...activityData]);
-            const rightItems = shuffle([...activityData]);
-
-            // 產生左側文字
-            leftItems.forEach(item => {
-                const row = document.createElement('div');
-                row.className = 'flex items-center justify-end h-20 bg-white border-2 border-slate-200 rounded-lg shadow-sm px-4 relative';
-                row.innerHTML = `
-                    <span class="text-lg font-medium mr-4 text-right">${item.text}</span>
-                    <div class="dot w-5 h-5 bg-slate-300 rounded-full border-2 border-white absolute -right-2.5 z-30" 
-                         data-type="text" data-id="${item.id}" id="dot-text-${item.id}"></div>
+            // 隨機打亂左側
+            const shuffledLeft = [...matchData].sort(() => Math.random() - 0.5);
+            shuffledLeft.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'bg-white border border-slate-200 rounded-xl p-4 flex justify-between items-center shadow-sm h-24';
+                div.innerHTML = `
+                    <span class="font-medium text-slate-700">${item.text}</span>
+                    <div class="match-node left-node flex-shrink-0" data-id="${item.id}" data-side="left"></div>
                 `;
-                textListEl.appendChild(row);
+                leftContainer.appendChild(div);
             });
 
-            // 產生右側圖片(以文字/圖示示意)
-            rightItems.forEach(item => {
-                const row = document.createElement('div');
-                row.className = 'flex items-center justify-start h-20 bg-slate-50 border-2 border-dashed border-slate-300 rounded-lg px-4 relative';
-                row.innerHTML = `
-                    <div class="dot w-5 h-5 bg-slate-300 rounded-full border-2 border-white absolute -left-2.5 z-30" 
-                         data-type="img" data-id="${item.id}" id="dot-img-${item.id}"></div>
-                    <div class="ml-4 flex items-center text-slate-500">
-                        <span class="text-3xl mr-3">${item.icon}</span>
-                        <span class="text-sm font-medium">【圖片示意】<br>${item.imgText}</span>
-                    </div>
+            // 隨機打亂右側
+            const shuffledRight = [...matchImages].sort(() => Math.random() - 0.5);
+            shuffledRight.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'bg-white border border-slate-200 rounded-xl py-2 px-4 flex justify-between items-center flex-row-reverse shadow-sm h-24';
+                div.innerHTML = `
+                    <img src="${item.img}" alt="圖片選項" class="h-full object-contain pointer-events-none select-none" draggable="false">
+                    <div class="match-node right-node flex-shrink-0" data-id="${item.id}" data-side="right"></div>
                 `;
-                imgListEl.appendChild(row);
+                rightContainer.appendChild(div);
             });
 
             // 綁定點擊事件
-            document.querySelectorAll('.dot').forEach(dot => {
-                dot.addEventListener('click', handleDotClick);
+            document.querySelectorAll('.match-node').forEach(node => {
+                node.addEventListener('click', handleNodeClick);
             });
+
+            resizeCanvas();
         }
 
-        function handleDotClick(e) {
-            const dot = e.target;
-            const type = dot.dataset.type;
-            const id = dot.dataset.id;
+        function handleNodeClick(e) {
+            const node = e.target;
+            
+            // 如果點擊已連線的節點，則解除該連線
+            const existingConnIndex = connections.findIndex(c => c.from === node || c.to === node);
+            if (existingConnIndex > -1) {
+                connections.splice(existingConnIndex, 1);
+                node.classList.remove('selected');
+                drawConnections();
+                return;
+            }
 
-            // 若點擊已連線的點，不做反應(可進階實作刪除單條線)
-            if (dot.classList.contains('connected')) return;
-
-            if (!selectedDot) {
+            if (!currentSelection) {
                 // 第一次點擊
-                selectedDot = dot;
-                dot.classList.add('selected');
+                currentSelection = node;
+                node.classList.add('selected');
             } else {
                 // 第二次點擊
-                if (selectedDot === dot) {
-                    // 取消選取
-                    dot.classList.remove('selected');
-                    selectedDot = null;
-                } else if (selectedDot.dataset.type === type) {
-                    // 點了同側的另一個點 -> 切換選取
-                    selectedDot.classList.remove('selected');
-                    selectedDot = dot;
-                    dot.classList.add('selected');
+                if (currentSelection.dataset.side !== node.dataset.side) {
+                    // 來自不同側，建立連線
+                    connections.push({
+                        from: currentSelection.dataset.side === 'left' ? currentSelection : node,
+                        to: currentSelection.dataset.side === 'right' ? currentSelection : node
+                    });
+                    currentSelection.classList.remove('selected');
+                    currentSelection = null;
+                    drawConnections();
                 } else {
-                    // 點了不同側的點 -> 判斷對錯並連線
-                    checkMatch(selectedDot, dot);
+                    // 點擊同側，切換選取
+                    currentSelection.classList.remove('selected');
+                    currentSelection = node;
+                    node.classList.add('selected');
                 }
             }
         }
 
-        function checkMatch(dot1, dot2) {
-            const id1 = parseInt(dot1.dataset.id);
-            const id2 = parseInt(dot2.dataset.id);
+        function resizeCanvas() {
+            const container = document.getElementById('match-container');
+            canvas.width = container.offsetWidth;
+            canvas.height = container.offsetHeight;
+            drawConnections();
+        }
 
-            // 清除選取狀態
-            dot1.classList.remove('selected');
-            dot2.classList.remove('selected');
-            selectedDot = null;
+        function drawConnections() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const containerRect = document.getElementById('match-container').getBoundingClientRect();
 
-            if (id1 === id2) {
-                // 答對了！畫線
-                drawLine(dot1, dot2, id1);
-                dot1.classList.add('connected');
-                dot2.classList.add('connected');
+            connections.forEach(conn => {
+                const rectFrom = conn.from.getBoundingClientRect();
+                const rectTo = conn.to.getBoundingClientRect();
+
+                // 計算相對於 container 的座標 (節點中心)
+                const startX = rectFrom.left - containerRect.left + rectFrom.width / 2;
+                const startY = rectFrom.top - containerRect.top + rectFrom.height / 2;
+                const endX = rectTo.left - containerRect.left + rectTo.width / 2;
+                const endY = rectTo.top - containerRect.top + rectTo.height / 2;
+
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                // 畫貝茲曲線讓線條更平滑自然
+                const cpX = (startX + endX) / 2;
+                ctx.bezierCurveTo(cpX, startY, cpX, endY, endX, endY);
                 
-                checkAllMatched();
+                ctx.strokeStyle = '#cbd5e1';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+
+                // 畫線條上的動畫或顏色區分 (這裡用簡單的實線)
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+        }
+
+        function resetMatching() {
+            initMatching();
+        }
+
+        function checkMatching() {
+            if (connections.length < matchData.length) {
+                showModal('提示', '請將所有的項目都連上線喔！', false);
+                return;
+            }
+
+            let correctCount = 0;
+            connections.forEach(conn => {
+                const leftId = parseInt(conn.from.dataset.id);
+                const rightId = conn.to.dataset.id;
+                const data = matchData.find(d => d.id === leftId);
+                if (data && data.matchId === rightId) {
+                    correctCount++;
+                }
+            });
+
+            if (correctCount === matchData.length) {
+                showModal('太棒了！', '連連看完全正確！你很仔細觀察呢。', true);
             } else {
-                // 答錯提示
-                matchingFeedback.textContent = '❌ 連錯囉！請再試試看。';
-                matchingFeedback.className = 'mt-6 text-center text-lg font-bold min-h-[28px] text-red-500';
-                setTimeout(() => { matchingFeedback.textContent = ''; }, 2000);
+                showModal('再試一下', `答對了 ${correctCount} 個，還有一些小錯誤，再檢查看看圖片特徵喔。`, false);
             }
         }
 
-        function drawLine(dot1, dot2, id) {
-            // 取得 SVG 容器相對於視窗的座標
-            const svgRect = svgContainer.getBoundingClientRect();
-            
-            // 取得兩個點相對於視窗的中心座標
-            const rect1 = dot1.getBoundingClientRect();
-            const rect2 = dot2.getBoundingClientRect();
-            
-            const x1 = rect1.left + rect1.width / 2 - svgRect.left;
-            const y1 = rect1.top + rect1.height / 2 - svgRect.top;
-            
-            const x2 = rect2.left + rect2.width / 2 - svgRect.left;
-            const y2 = rect2.top + rect2.height / 2 - svgRect.top;
-
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            line.setAttribute('x1', x1);
-            line.setAttribute('y1', y1);
-            line.setAttribute('x2', x2);
-            line.setAttribute('y2', y2);
-            line.setAttribute('stroke', '#10b981'); // Tailwind emerald-500
-            line.setAttribute('stroke-width', '4');
-            line.setAttribute('stroke-linecap', 'round');
-            
-            svgContainer.appendChild(line);
-            connections.push(id);
-        }
-
-        function checkAllMatched() {
-            if (connections.length === activityData.length) {
-                matchingFeedback.textContent = '🎉 太棒了！你完成了所有圖文配對！';
-                matchingFeedback.className = 'mt-6 text-center text-lg font-bold min-h-[28px] text-emerald-600';
-            } else {
-                matchingFeedback.textContent = '✅ 正確！繼續加油！';
-                matchingFeedback.className = 'mt-6 text-center text-lg font-bold min-h-[28px] text-teal-600';
-                setTimeout(() => { 
-                    if(connections.length !== activityData.length) matchingFeedback.textContent = ''; 
-                }, 1500);
-            }
-        }
-
-        resetLinesBtn.addEventListener('click', initMatchingGame);
-        
-        // 視窗縮放時重繪連線 (簡易處理：直接重置遊戲，或可進階寫重繪邏輯)
-        window.addEventListener('resize', () => {
-            if(connections.length > 0) {
-               // 理想狀態是重新計算 x1,y1,x2,y2，為求簡潔此處提示用戶或保留
-            }
-        });
+        window.addEventListener('resize', resizeCanvas);
 
 
-        // ==========================================
-        // 活動二：拖曳排序邏輯
-        // ==========================================
-        const sortableList = document.getElementById('sortable-list');
-        const checkOrderBtn = document.getElementById('check-order-btn');
-        const resetOrderBtn = document.getElementById('reset-order-btn');
-        const orderFeedback = document.getElementById('order-feedback');
+        // --- 活動二：排序邏輯 ---
+        const orderData = [
+            { id: 1, text: "從飛機窗往外看人形畫" },
+            { id: 2, text: "到納斯卡的路途" },
+            { id: 3, text: "參觀考古博物館" },
+            { id: 4, text: "到小機場搭飛機" },
+            { id: 5, text: "從飛機上往下看納斯卡線" },
+            { id: 6, text: "旅行感想" }
+        ];
 
         let draggedItem = null;
+        const sortableList = document.getElementById('sortable-list');
 
-        function initOrderingGame() {
+        function initOrdering() {
             sortableList.innerHTML = '';
-            orderFeedback.textContent = '';
             
-            // 準備打亂的資料 (排除正確順序的可能性)
-            let items = [...activityData];
-            do {
-                items = shuffle(items);
-            } while (checkIfPerfectOrder(items));
+            // 隨機打亂初始順序
+            const shuffledData = [...orderData].sort(() => Math.random() - 0.5);
 
-            items.forEach((item, index) => {
+            shuffledData.forEach((item) => {
                 const div = document.createElement('div');
-                div.className = 'sortable-item bg-white border border-slate-300 rounded-lg p-4 flex items-center shadow-sm hover:shadow-md transition-shadow group';
+                // 加入 no-select 確保拖曳順暢
+                div.className = 'sortable-item bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing no-select group';
                 div.draggable = true;
                 div.dataset.id = item.id;
                 
                 div.innerHTML = `
-                    <div class="mr-4 text-slate-300 group-hover:text-slate-500 cursor-grab">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                    <div class="flex items-center flex-grow pointer-events-none">
+                        <div class="mr-4 text-slate-300 group-hover:text-slate-500">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        </div>
+                        <span class="text-lg font-medium text-slate-700">${item.text}</span>
                     </div>
-                    <div class="hidden md:flex bg-teal-50 text-teal-700 w-8 h-8 rounded-full items-center justify-center font-bold mr-4">?</div>
-                    <span class="text-lg font-medium flex-grow">${item.text}</span>
+                    
+                    <div class="flex items-center gap-3">
+                        <!-- 行動裝置輔助按鈕 (僅在點擊時觸發，不參與拖曳) -->
+                        <div class="flex flex-col md:hidden">
+                            <button onclick="moveItem(this, -1)" class="p-1 text-slate-400 hover:text-emerald-600 bg-slate-50 rounded mb-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg></button>
+                            <button onclick="moveItem(this, 1)" class="p-1 text-slate-400 hover:text-emerald-600 bg-slate-50 rounded"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></button>
+                        </div>
+                        <!-- 用來顯示正確順序數字的徽章 (預設為空) -->
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm bg-slate-100 text-slate-400 border border-slate-200 order-badge transition-colors">
+                            -
+                        </div>
+                    </div>
                 `;
 
-                // 拖曳事件監聽
+                // 綁定拖曳事件
                 div.addEventListener('dragstart', handleDragStart);
                 div.addEventListener('dragover', handleDragOver);
                 div.addEventListener('dragenter', handleDragEnter);
@@ -361,19 +436,38 @@
                 div.addEventListener('drop', handleDrop);
                 div.addEventListener('dragend', handleDragEnd);
 
-                // 支援觸控 (簡易版，供行動裝置使用上下按鈕取代拖曳)
-                // 為了保持單一檔案簡潔，此處僅實作 HTML5 Drag and Drop API
-                // 實際於行動端需使用 Touch events 或提供上下移動按鈕
-
                 sortableList.appendChild(div);
+            });
+        }
+
+        // 行動裝置輔助按鈕邏輯
+        function moveItem(btn, direction) {
+            const item = btn.closest('.sortable-item');
+            if (!item) return;
+            
+            if (direction === -1 && item.previousElementSibling) {
+                item.parentNode.insertBefore(item, item.previousElementSibling);
+            } else if (direction === 1 && item.nextElementSibling) {
+                item.parentNode.insertBefore(item.nextElementSibling, item);
+            }
+            // 重置所有徽章狀態
+            resetBadges();
+        }
+
+        function resetBadges() {
+            document.querySelectorAll('.order-badge').forEach(badge => {
+                badge.textContent = '-';
+                badge.className = 'w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm bg-slate-100 text-slate-400 border border-slate-200 order-badge transition-colors';
             });
         }
 
         function handleDragStart(e) {
             draggedItem = this;
             e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/html', this.innerHTML);
-            setTimeout(() => this.classList.add('opacity-50'), 0);
+            // 使用 application/json 避免瀏覽器將其視為文字進行搜尋或開新分頁
+            e.dataTransfer.setData('application/json', JSON.stringify({id: this.dataset.id}));
+            
+            setTimeout(() => this.classList.add('dragging'), 0);
         }
 
         function handleDragOver(e) {
@@ -384,13 +478,13 @@
 
         function handleDragEnter(e) {
             e.preventDefault();
-            if (this !== draggedItem) {
+            if (this !== draggedItem && this.classList.contains('sortable-item')) {
                 this.classList.add('drag-over');
             }
         }
 
         function handleDragLeave(e) {
-            if (this !== draggedItem) {
+            if (this.classList.contains('sortable-item')) {
                 this.classList.remove('drag-over');
             }
         }
@@ -398,78 +492,58 @@
         function handleDrop(e) {
             e.stopPropagation();
             if (draggedItem !== this) {
-                // 交換 DOM 位置
-                const allItems = [...sortableList.querySelectorAll('.sortable-item')];
-                const draggedIndex = allItems.indexOf(draggedItem);
-                const targetIndex = allItems.indexOf(this);
-
-                if (draggedIndex < targetIndex) {
+                // 判斷放置位置是在目標的上方還是下方
+                const bounding = this.getBoundingClientRect();
+                const offset = bounding.y + (bounding.height / 2);
+                if (e.clientY - offset > 0) {
                     this.parentNode.insertBefore(draggedItem, this.nextSibling);
                 } else {
                     this.parentNode.insertBefore(draggedItem, this);
                 }
             }
-            this.classList.remove('drag-over');
             return false;
         }
 
         function handleDragEnd(e) {
-            this.classList.remove('opacity-50');
-            sortableList.querySelectorAll('.sortable-item').forEach(item => {
+            this.classList.remove('dragging');
+            document.querySelectorAll('.sortable-item').forEach(item => {
                 item.classList.remove('drag-over');
             });
-            orderFeedback.textContent = ''; // 隱藏先前的提示
-        }
-
-        function checkIfPerfectOrder(itemsArray) {
-            for(let i=0; i<itemsArray.length; i++) {
-                if(itemsArray[i].id !== i+1) return false;
-            }
-            return true;
+            resetBadges(); // 拖曳結束後重置檢查狀態
         }
 
         function checkOrder() {
-            const currentItems = sortableList.querySelectorAll('.sortable-item');
-            let isCorrect = true;
+            const items = sortableList.querySelectorAll('.sortable-item');
+            let isAllCorrect = true;
+            let correctCount = 0;
 
-            currentItems.forEach((item, index) => {
-                const expectedId = index + 1;
+            items.forEach((item, index) => {
+                const expectedId = index + 1; // 1 到 6
                 const actualId = parseInt(item.dataset.id);
-                
-                // 移除先前的樣式
-                item.classList.remove('border-emerald-500', 'bg-emerald-50', 'border-red-400', 'bg-red-50');
-                
-                const numberBadge = item.querySelector('.rounded-full');
-                numberBadge.textContent = expectedId;
+                const badge = item.querySelector('.order-badge');
+
+                // 填入目前的排序數字
+                badge.textContent = expectedId;
 
                 if (actualId === expectedId) {
-                    // 位置正確
-                    item.classList.add('border-emerald-500', 'bg-emerald-50');
-                    numberBadge.classList.replace('bg-teal-50', 'bg-emerald-200');
-                    numberBadge.classList.replace('text-teal-700', 'text-emerald-800');
+                    badge.className = 'w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm bg-emerald-100 text-emerald-700 border border-emerald-300 order-badge transition-colors';
+                    correctCount++;
                 } else {
-                    // 位置錯誤
-                    isCorrect = false;
-                    item.classList.add('border-red-400', 'bg-red-50');
-                    numberBadge.classList.replace('bg-teal-50', 'bg-red-200');
-                    numberBadge.classList.replace('text-teal-700', 'text-red-800');
+                    badge.className = 'w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm bg-rose-100 text-rose-600 border border-rose-300 order-badge transition-colors';
+                    isAllCorrect = false;
                 }
             });
 
-            if (isCorrect) {
-                orderFeedback.innerHTML = '🎉 <span class="text-emerald-600">完全正確！你排出了正確的旅程順序！</span>';
+            if (isAllCorrect) {
+                showModal('太棒了！', '排序完全正確！你很清楚旅行的先後順序呢。', true);
             } else {
-                orderFeedback.innerHTML = '🤔 <span class="text-red-500">有部分順序不太對喔，綠色底的是正確位置，紅色底的請再調整看看。</span>';
+                showModal('再試一下', `目前有 ${correctCount} 個位置是正確的，請根據文章邏輯調整紅色的部分。`, false);
             }
         }
 
-        checkOrderBtn.addEventListener('click', checkOrder);
-        resetOrderBtn.addEventListener('click', initOrderingGame);
-
-        // 初始化遊戲
         window.onload = () => {
-            initMatchingGame();
-            initOrderingGame();
+            initMatching();
+            initOrdering();
         };
 
     </script>
